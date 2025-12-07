@@ -25,8 +25,13 @@ echo "=== IPv6 passthrough ==="
 uci set network.lan.ip6assign='64'   # размер префикса для RA (64)
 uci set network.lan.ip6hint='10'     # необязательно, помогает выбирать подпрефикс
 uci set network.lan.delegate='1'     # разрешаем RA для клиентов
-
 uci commit network
+
+# Настройка DHCP (только RA relay)
+uci set dhcp.lan.ignore='1'
+uci set dhcp.lan.ra='relay'
+uci commit dhcp
+/etc/init.d/dnsmasq restart
 
 echo "=== Перезапускаем сеть ==="
 /etc/init.d/network restart
