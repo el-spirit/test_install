@@ -126,7 +126,9 @@ EOF
         uci set fstab.overlay="mount"
         uci set fstab.overlay.uuid="${UUID}"
         uci set fstab.overlay.target="/overlay"
-		uci set fstab.overlay.options="rw,noatime,data=writeback"
+		uci set fstab.overlay.fstype='ext4'
+		uci set fstab.overlay.options='rw,noatime,data=writeback'
+		uci set fstab.overlay.enabled='1
         uci commit fstab
 
         # Now transfering of current root to new on usb:
