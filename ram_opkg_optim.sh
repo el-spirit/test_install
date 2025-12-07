@@ -45,38 +45,53 @@ grep -q "^dest root /$" $OPKG_CONF || echo "dest root /" >> $OPKG_CONF
 echo "=== Обновляем список пакетов ==="
 opkg update
 
-# -----------------------------
-# OpenWrt ZRAM Setup Script
-# -----------------------------
+# -------------------------------------------------
+# POSIX-compliant OpenWrt ZRAM + LuCI Setup Script
+# -------------------------------------------------
 
-# Параметры
-ZRAM_DEVICES=1               # количество zram устройств
-ZRAM_SIZE_PERCENT=50         # размер zram в процентах от ОЗУ
-SWAP_PRIORITY=100            # приоритет swap
-SWAP_FILE=/dev/zram0
+# --- Настройки ---
+ZRAM_DEVICES=1             # количество zram устройств
+ZRAM_SIZE_PERCENT=50       # размер zram в % от RAM
+SWAP_PRIORITY=100          # приоритет swap
+ZRAM_DEVICE="/dev/zram0"
 
-# Установка пакета zram (если не установлен)
+echo "[*] Обновляем пакеты..."
 opkg update
-opkg install kmod-zram || echo "kmod-zram уже установлен"
+opkg install kmod-zram || echo "[*] kmod-zram уже установлен"
 
-# Отключаем текущий swap на zram (если есть)
-swapoff ${SWAP_FILE} 2>/dev/null
-echo 0 > /sys/block/zram0/reset
+# --- Настройка ZRAM ---
+echo "[*] Настраиваем ZRAM..."
 
-# Определяем размер в байтах
-TOTAL_RAM=$(grep MemTotal /proc/meminfo | awk '{print $2}') # в KB
-ZRAM_SIZE=$((TOTAL_RAM * ZRAM_SIZE_PERCENT / 100 * 1024))   # перевод в байты
+# Отключаем существующий swap и сбрасываем zram
+if [ -e "$ZRAM_DEVICE" ]; then
+    swapoff "$ZRAM_DEVICE" 2>/dev/null
+    echo 0 > /sys/block/zram0/reset
+fi
 
-# Настройка zram
-echo $ZRAM_SIZE > /sys/block/zram0/disksize
+# Определяем размер ZRAM в байтах
+TOTAL_RAM=$(awk '/MemTotal/ {print $2}' /proc/meminfo)   # в KB
+ZRAM_SIZE=$(( TOTAL_RAM * ZRAM_SIZE_PERCENT / 100 * 1024 )) # в байтах
 
-# Форматируем под swap
-mkswap ${SWAP_FILE}
-swapon -p ${SWAP_PRIORITY} ${SWAP_FILE}
+# Настраиваем размер
+echo "$ZRAM_SIZE" > /sys/block/zram0/disksize
 
-# Проверка
-swapon -s
+# Форматируем как swap и включаем
+mkswap "$ZRAM_DEVICE"
+swapon -p "$SWAP_PRIORITY" "$ZRAM_DEVICE"
+
+# --- Проверка ---
+echo "[*] Проверка swap:"
+cat /proc/swaps
 free -h
+
+echo "[*] ZRAM настроен: ${ZRAM_SIZE_PERCENT}% от RAM"
+
+# --- Автозагрузка при старте ---
+RC_LOCAL="/etc/rc.local"
+if ! grep -q "setup_zram.sh" "$RC_LOCAL"; then
+    echo "[*] Добавляем запуск скрипта при старте..."
+    sed -i -e '$i /root/setup_zram.sh\n' "$RC_LOCAL"
+fi
 
 echo "ZRAM настроен: ${ZRAM_SIZE_PERCENT}% от RAM"
 
