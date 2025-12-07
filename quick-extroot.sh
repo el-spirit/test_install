@@ -323,7 +323,7 @@ function _checkfix_extroot() {
 # MAIN()
 echo "_________________________________________________"
 echo "                                                 "
-echo "- QICK - EXTROOT OPENWRT v0.2с (c) 2021 - modded -"
+echo "- QICK - EXTROOT OPENWRT v0.2d (c) 2021 - modded -"
 echo "_________________________________________________"
 echo
 
