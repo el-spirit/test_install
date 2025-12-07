@@ -103,23 +103,23 @@ EOF
         #set kernel invoke:
         #partx /dev/sda
 
-	echo; echo "[*] Create a fresh partition on $CH_DEV"
-	# Удаляем старую таблицу разделов и создаем новую MBR
-	dd if=/dev/zero of=$CH_DEV bs=512 count=2048 conv=fsync
-	echo "[*] Old partitions wiped"
+		echo; echo "[*] Create a fresh partition on $CH_DEV"
+		# Удаляем старую таблицу разделов и создаем новую MBR
+		dd if=/dev/zero of=$CH_DEV bs=512 count=2048 conv=fsync
+		echo "[*] Old partitions wiped"
 
-	# Создаем один основной раздел ext4
-	echo ",,83,*" | sfdisk --wipe=always $CH_DEV
-	if [ $? -ne 0 ]; then
-	    echo "[!!] ERROR: Failed to create partition table"
-	    exit 1
-	fi
+		# Создаем один основной раздел ext4
+		echo ",,83,*" | sfdisk --wipe=always $CH_DEV
+		if [ $? -ne 0 ]; then
+	    	echo "[!!] ERROR: Failed to create partition table"
+	    	exit 1
+		fi
 
         #set first part. on disk - Настраиваем переменную для первой части
         XTDEVICE="${CH_DEV}1"
 
         mkfs.ext4 -F -O ^has_journal -E stride=16,stripe-width=16 -L extroot ${XTDEVICE}
-	echo "[*] Partition formatted as ext4 optimized for microSD"
+		echo "[*] Partition formatted as ext4 optimized for microSD"
 
         # configure the selected partition as new overlay via fstab UCI subsystem:
 
@@ -128,7 +128,7 @@ EOF
         uci set fstab.overlay="mount"
         uci set fstab.overlay.uuid="${UUID}"
         uci set fstab.overlay.target="/overlay"
-	uci set fstab.overlay.options="rw,noatime,nodiratime,data=writeback"
+		#uci set fstab.overlay.options="rw,noatime,nodiratime,data=writeback"
         uci commit fstab
 
         # Now transfering of current root to new on usb:
