@@ -17,6 +17,8 @@ uci set network.lan.device='br-lan'
 uci set network.lan.proto='static'
 uci set network.lan.ipaddr='172.16.0.10'
 uci set network.lan.netmask='255.255.255.0'
+uci set network.lan.gateway='172.16.0.1'       # шлюз
+uci set network.lan.dns='172.16.0.1'     # DNS-сервер
 uci set network.@device[0].ports='lan1 lan2 lan3 lan4 wan'
 uci commit network
 
