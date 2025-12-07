@@ -80,7 +80,11 @@ function _set_xedroot() {
                 CH_DEV=$__DEV
         fi
 
-
+				echo; echo "[*] Create a fresh partition on $CH_DEV"
+				# Удаляем старую таблицу разделов и создаем новую MBR
+				dd if=/dev/zero of=$CH_DEV bs=512 count=2048 conv=fsync
+				echo "[*] Old partitions wiped"
+		
                 fdisk -l | grep -e ${CH_DEV}1
                 
                 if [ $? -ne 0 ]; then
@@ -102,19 +106,7 @@ EOF
         #set kernel invoke:
         #partx /dev/sda
 
-		echo; echo "[*] Create a fresh partition on $CH_DEV"
-		# Удаляем старую таблицу разделов и создаем новую MBR
-		dd if=/dev/zero of=$CH_DEV bs=512 count=2048 conv=fsync
-		echo "[*] Old partitions wiped"
-
-		# Создаем один основной раздел ext4
-		echo ",,83,*" | sfdisk --wipe=always $CH_DEV
-		if [ $? -ne 0 ]; then
-	    	echo "[!!] ERROR: Failed to create partition table"
-	    	exit 1
-		fi
-
-        #set first part. on disk - Настраиваем переменную для первой части
+		#set first part. on disk - Настраиваем переменную для первой части
         XTDEVICE="${CH_DEV}1"
 
         mkfs.ext4 -F -O ^has_journal -E stride=16,stripe-width=16 -L extroot ${XTDEVICE}
