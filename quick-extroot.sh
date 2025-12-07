@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # --------------------------------
-# openwrt : quick-extroot v0.2g
+# openwrt : quick-extroot v0.2h
 # -------------------------------
 # (c) 2021 suuhm
 #
@@ -304,7 +304,7 @@ function _checkfix_extroot() {
         uci set fstab.overlay.uuid="${UUID}"
         uci set fstab.overlay.target="/overlay"
 		uci set fstab.overlay.fstype='ext4'
-		uci set fstab.overlay.options='rw,noatime,data=writeback'
+		uci set fstab.overlay.options='rw,noatime,data=writeback,commit=600'
 		uci set fstab.overlay.enabled='1'
         uci commit fstab
 
@@ -327,7 +327,7 @@ function _checkfix_extroot() {
 # MAIN()
 echo "_________________________________________________"
 echo "                                                 "
-echo "- QICK - EXTROOT OPENWRT v0.2g (c) 2021 - modded -"
+echo "- QICK - EXTROOT OPENWRT v0.2h (c) 2021 - modded -"
 echo "_________________________________________________"
 echo
 
