@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # --------------------------------
-# openwrt : quick-extroot v0.2a
+# openwrt : quick-extroot v0.2с
 # -------------------------------
 # (c) 2021 suuhm
 #
@@ -83,11 +83,12 @@ function _set_xedroot() {
 				echo
 				echo "[*] Create a fresh partition on $CH_DEV"
 
-				echo "[*]Удаляем старую таблицу разделов и начало диска — 1 МБ
+				echo "[*]Удаляем старую таблицу разделов и начало диска — 1 МБ"
+				
 				dd if=/dev/zero of="$CH_DEV" bs=512 count=2048 conv=fsync
 				echo "[*] Old partitions wiped"
 
-				echo "[*] Проверяем наличие /dev/sdX1
+				echo "[*] Проверяем наличие /dev/sdX1"
 				fdisk -l | grep -q "${CH_DEV}1"
 
 				if [ $? -ne 0 ]; then
@@ -321,7 +322,7 @@ function _checkfix_extroot() {
 # MAIN()
 echo "_________________________________________________"
 echo "                                                 "
-echo "- QICK - EXTROOT OPENWRT v0.2a (c) 2021 - modded -"
+echo "- QICK - EXTROOT OPENWRT v0.2с (c) 2021 - modded -"
 echo "_________________________________________________"
 echo
 
