@@ -45,8 +45,14 @@ _set_xedroot() {
     fi
     _check_device "$CH_DEV"
 
-    echo "[*] WARNING! All data on $CH_DEV will be destroyed! Continue? (y/n)"
-    read yn
+    # Подтверждение удаления данных
+    if [ "$1" = "--create-extroot" ]; then
+        yn="y"
+    else
+        echo "[*] WARNING! All data on $CH_DEV will be destroyed! Continue? (y/n)"
+        read yn
+    fi
+
     if [ "$yn" != "y" ]; then
         echo "[*] Exiting..."
         exit 0
@@ -76,8 +82,8 @@ _set_xedroot() {
     tar -C /tmp/cproot -cf - . | tar -C /mnt/extroot -xf -
     umount /tmp/cproot /mnt/extroot
 
-    # Настройка fstab
-    UUID=$(blkid -s UUID -o value "$XTDEVICE")
+    # Настройка fstab с использованием block info
+    UUID=$(block info "$XTDEVICE" | grep -o -e "UUID=[^ ]*" | cut -d= -f2)
     if [ -z "$UUID" ]; then
         echo "[!!] Failed to get UUID for $XTDEVICE"
         exit 1
