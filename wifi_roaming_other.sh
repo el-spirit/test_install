@@ -47,13 +47,13 @@ opkg install wpad
 if [ "$ROUTER_TYPE" = "R1" ]; then
     RADIO0_CH=1    # 2.4GHz
     RADIO1_CH=36   # 5GHz
-    NASID_24="ChikaWiFi_24G_R1"
-    NASID_5="ChikaWiFi_5G_R1"
+    NASID_24="Cudy"
+    NASID_5="Cudy"
 else
     RADIO0_CH=6
     RADIO1_CH=44
-    NASID_24="ChikaWiFi_24G_R2"
-    NASID_5="ChikaWiFi_5G_R2"
+    NASID_24="Cudy"
+    NASID_5="Cudy"
 fi
 
 # ----------------------------
