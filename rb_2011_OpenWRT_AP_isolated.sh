@@ -18,6 +18,9 @@ LAN100_MASK="255.255.255.0"
 # ----------------------------
 # Удаляем старые интерфейсы
 # ----------------------------
+uci delete network.wan
+uci delete network.wan6
+uci delete network.sfp
 uci delete network.lan 2>/dev/null
 uci delete network.lan100 2>/dev/null
 uci delete dhcp.lan100 2>/dev/null
