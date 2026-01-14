@@ -73,5 +73,5 @@ iptables -A FORWARD -i br-lan100 -o br-lan -j ACCEPT
 wifi reload
 
 echo "=== Умная точка доступа готова ==="
-echo "LAN (гигaбит) IP: 192.168.1.2"
+echo "LAN (гигaбит) IP: 172.16.0.20"
 echo "LAN100 (100Мбит) IP: $LAN100_SUBNET"
