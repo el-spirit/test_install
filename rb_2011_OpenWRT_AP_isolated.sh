@@ -6,9 +6,6 @@
 # ----------------------------
 # Параметры
 # ----------------------------
-SSID="ChikaWiFi"
-PASSWORD="irdiS0066"
-COUNTRY="RU"
 
 # Основная LAN (гигабит)
 LAN_PORTS_GIGA="eth0.0 eth0.1 eth0.2 eth0.3 eth0.4 eth0.5"
@@ -69,40 +66,6 @@ iptables -A FORWARD -i br-lan -o br-lan100 -m state --state RELATED,ESTABLISHED 
 iptables -A FORWARD -i br-lan100 -o br-lan -j ACCEPT
 
 # ----------------------------
-# Установка wpad с поддержкой 802.11r/k/v
-# ----------------------------
-WPAD_INSTALLED=$(opkg list-installed | grep wpad)
-if echo "$WPAD_INSTALLED" | grep -qE "wpad-basic|wpad-mini"; then
-    opkg remove wpad-basic wpad-basic-mbedtls wpad-mini 2>/dev/null
-fi
-opkg update
-opkg install wpad 2>/dev/null
-
-# ----------------------------
-# Wi-Fi с бесшовным роумингом
-# ----------------------------
-uci set wireless.radio0.disabled='0'
-uci set wireless.radio0.country="$COUNTRY"
-uci set wireless.radio0.channel='36'
-uci set wireless.radio0.htmode='HT40'
-
-uci set wireless.default_radio0=wifi-iface
-uci set wireless.default_radio0.device='radio0'
-uci set wireless.default_radio0.network='lan'
-uci set wireless.default_radio0.mode='ap'
-uci set wireless.default_radio0.ssid="$SSID"
-uci set wireless.default_radio0.encryption='psk2'
-uci set wireless.default_radio0.key="$PASSWORD"
-uci set wireless.default_radio0.ieee80211r='1'
-uci set wireless.default_radio0.ft_over_ds='1'
-uci set wireless.default_radio0.ft_psk_generate_local='1'
-uci set wireless.default_radio0.ieee80211k='1'
-uci set wireless.default_radio0.ieee80211v='1'
-uci set wireless.default_radio0.rssi_min='-75'  # агрессивный роуминг
-
-uci commit wireless
-
-# ----------------------------
 # Применяем настройки
 # ----------------------------
 /etc/init.d/network restart
@@ -112,4 +75,3 @@ wifi reload
 echo "=== Умная точка доступа готова ==="
 echo "LAN (гигaбит) IP: 192.168.1.2"
 echo "LAN100 (100Мбит) IP: $LAN100_SUBNET"
-echo "Wi-Fi SSID: $SSID, пароль: $PASSWORD"
