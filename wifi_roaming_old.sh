@@ -25,6 +25,18 @@ uci set wireless.@wifi-iface[-1].ssid="$SSID"
 uci set wireless.@wifi-iface[-1].encryption='psk2'
 uci set wireless.@wifi-iface[-1].key="$PASSWORD"
 uci set wireless.@wifi-iface[-1].disassoc_low_ack='1'
+
+uci set wireless.@wifi-iface[0].ieee80211r='1'
+uci set wireless.@wifi-iface[0].mobility_domain="$MOBILITY_DOMAIN"
+uci set wireless.@wifi-iface[0].ft_over_ds='1'
+uci set wireless.@wifi-iface[0].ft_psk_generate_local='1'
+uci set wireless.@wifi-iface[0].nasid="$NASID_24"
+
+uci set wireless.@wifi-iface[0].ieee80211k='1'
+uci set wireless.@wifi-iface[0].ieee80211v='1'
+uci set wireless.@wifi-iface[0].rssi_min="$RSSI_24"
+uci set wireless.@wifi-iface[0].disassoc_low_ack='1'
+
 uci commit wireless
 
 uci set dhcp.lan.ignore='1'
