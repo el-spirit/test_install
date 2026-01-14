@@ -3,6 +3,17 @@
 # OpenWrt 19.07.x / 24.x
 
 # ---------- СЕТЬ ----------
+
+# Удаляем старые интерфейсы
+uci delete network.wan
+uci delete network.wan6
+uci delete network.sfp
+uci delete network.lan 2>/dev/null
+uci delete network.lan100 2>/dev/null
+uci delete dhcp.lan100 2>/dev/null
+uci delete wireless.default_radio0 2>/dev/null
+uci commit network
+
 # Создаем LAN мост через все порты
 uci set network.lan=interface
 uci set network.lan.type='bridge'
