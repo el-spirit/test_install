@@ -47,13 +47,13 @@ opkg install wpad
 if [ "$ROUTER_TYPE" = "R1" ]; then
     RADIO0_CH=1    # 2.4GHz
     RADIO1_CH=36   # 5GHz
-    NASID_24="ChikaWiFi_24G_R1"
-    NASID_5="ChikaWiFi_5G_R1"
+    NASID_24="ChikaWiFi_24G"
+    NASID_50="ChikaWiFi_50G"
+    RSSI_24="-72"
+    RSSI_50="-70"
 else
     RADIO0_CH=6
     RADIO1_CH=44
-    NASID_24="ChikaWiFi_24G_R2"
-    NASID_5="ChikaWiFi_5G_R2"
 fi
 
 # ----------------------------
@@ -74,6 +74,8 @@ uci set wireless.@wifi-iface[0].ft_psk_generate_local='1'
 uci set wireless.@wifi-iface[0].ieee80211k='1'
 uci set wireless.@wifi-iface[0].ieee80211v='1'
 uci set wireless.@wifi-iface[0].nasid="$NASID_24"
+uci set wireless.@wifi-iface[0].rssi_min="$RSSI_24"
+uci set wireless.@wifi-iface[0].disassoc_low_ack='1'
 
 # ----------------------------
 # Настройка Wi-Fi 5GHz
@@ -92,7 +94,9 @@ uci set wireless.@wifi-iface[1].ft_over_ds='1'
 uci set wireless.@wifi-iface[1].ft_psk_generate_local='1'
 uci set wireless.@wifi-iface[1].ieee80211k='1'
 uci set wireless.@wifi-iface[1].ieee80211v='1'
-uci set wireless.@wifi-iface[1].nasid="$NASID_5"
+uci set wireless.@wifi-iface[1].nasid="$NASID_50"
+uci set wireless.@wifi-iface[1].rssi_min="$RSSI_50"
+uci set wireless.@wifi-iface[1].disassoc_low_ack='1'
 
 # ----------------------------
 # Применение настроек
