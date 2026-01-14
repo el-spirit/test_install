@@ -10,6 +10,8 @@ uci set network.lan.ifname='eth0.0 eth0.1 eth0.2 eth0.3 eth0.4 eth0.5'
 uci set network.lan.proto='static'
 uci set network.lan.ipaddr='172.16.0.20'   # статический адрес в твоей сети
 uci set network.lan.netmask='255.255.255.0'
+uci set network.lan.gateway='172.16.0.1'       # шлюз
+uci set network.lan.dns='172.16.0.1'     # DNS-сервер
 uci commit network
 
 # ---------- DHCP ----------
