@@ -62,7 +62,7 @@ uci commit dhcp
 # NAT для LAN100 через основной LAN
 # ----------------------------
 iptables -t nat -A POSTROUTING -s 192.168.10.0/24 -o br-lan -j MASQUERADE
-iptables -A FORWARD -i br-lan -o br-lan100 -m state --state RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -i br-lan -o br-lan100 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 iptables -A FORWARD -i br-lan100 -o br-lan -j ACCEPT
 
 # ----------------------------
