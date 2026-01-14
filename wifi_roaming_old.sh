@@ -5,6 +5,8 @@ SSID="ChikaWiFi"
 PASSWORD="irdiS0066"
 COUNTRY="RU"
 CHANNEL="13"
+NASID_24="ChikaWiFi_24G"
+MOBILITY_DOMAIN="abcd"
 
 opkg update
 opkg remove wpad-basic wpad-mini 2>/dev/null
