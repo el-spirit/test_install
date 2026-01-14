@@ -5,7 +5,7 @@
 # ---------- СЕТЬ ----------
 # Создаем LAN мост через все порты
 uci set network.lan=interface
-uci set network.lan.type='bridge'
+uci set network.lan.type='br-lan'
 uci set network.lan.ifname='eth0.0 eth0.1 eth0.2 eth0.3 eth0.4 eth0.5'
 uci set network.lan.proto='static'
 uci set network.lan.ipaddr='172.16.0.20'   # статический адрес в твоей сети
