@@ -9,7 +9,7 @@ NASID_24="ChikaWiFi_24G"
 MOBILITY_DOMAIN="abcd"
 
 opkg update
-opkg remove wpad-basic wpad-mini 2>/dev/null
+opkg remove wpad-basic wpad-basic-mbedtls wpad-mini 2>/dev/null
 opkg install wpad
 
 uci set wireless.radio0.disabled='0'
