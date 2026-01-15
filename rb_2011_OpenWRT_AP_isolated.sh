@@ -16,16 +16,13 @@ LAN100_SUBNET="192.168.10.1"
 LAN100_MASK="255.255.255.0"
 
 # ----------------------------
-# Удаляем старые интерфейсы
+# Удаляем старые интерфейсы и DHCP
 # ----------------------------
-uci delete network.wan
-uci delete network.wan6
-uci delete network.sfp
 uci delete network.lan 2>/dev/null
 uci delete network.lan100 2>/dev/null
 uci delete dhcp.lan100 2>/dev/null
-uci delete wireless.default_radio0 2>/dev/null
 uci commit network
+uci commit dhcp
 
 # ----------------------------
 # Настройка основной LAN (гигабит)
@@ -36,8 +33,8 @@ uci set network.lan.ifname="$LAN_PORTS_GIGA"
 uci set network.lan.proto='static'
 uci set network.lan.ipaddr='172.16.0.20'
 uci set network.lan.netmask='255.255.255.0'
-uci set network.lan.gateway='172.16.0.1'       # шлюз
-uci set network.lan.dns='172.16.0.1'     # DNS-сервер
+uci set network.lan.gateway='172.16.0.1'
+uci set network.lan.dns='172.16.0.1'
 uci commit network
 
 # ----------------------------
@@ -62,17 +59,29 @@ uci set dhcp.lan100.leasetime='12h'
 uci commit dhcp
 
 # ----------------------------
-# NAT для LAN100 через основной LAN
+# Firewall для LAN100 (NAT + форвардинг)
 # ----------------------------
-iptables -t nat -A POSTROUTING -s 192.168.10.0/24 -o br-lan -j MASQUERADE
-iptables -A FORWARD -i br-lan -o br-lan100 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-iptables -A FORWARD -i br-lan100 -o br-lan -j ACCEPT
+uci add firewall zone
+uci set firewall.@zone[-1].name='lan100'
+uci set firewall.@zone[-1].network='lan100'
+uci set firewall.@zone[-1].input='ACCEPT'
+uci set firewall.@zone[-1].output='ACCEPT'
+uci set firewall.@zone[-1].forward='REJECT'
+uci set firewall.@zone[-1].masq='1'
+uci commit firewall
+
+# Разрешаем LAN100 ходить в LAN
+uci add firewall forwarding
+uci set firewall.@forwarding[-1].src='lan100'
+uci set firewall.@forwarding[-1].dest='lan'
+uci commit firewall
 
 # ----------------------------
 # Применяем настройки
 # ----------------------------
 /etc/init.d/network restart
 /etc/init.d/dnsmasq restart
+/etc/init.d/firewall restart
 wifi reload
 
 echo "=== Умная точка доступа готова ==="
