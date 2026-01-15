@@ -50,7 +50,7 @@ fi
 
 # ===== WPAD =====
 opkg update
-opkg remove wpad-basic wpad-mini 2>/dev/null
+opkg remove wpad-basic wpad-basic-mbedtls wpad-mini 2>/dev/null
 opkg install wpad
 
 # ===== 2.4 GHz =====
