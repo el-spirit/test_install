@@ -70,55 +70,135 @@ fi
 
 echo "[✓] Пакеты установлены"
 
-# ====================== НАСТРОЙКА WIFI ======================
-echo "[*] Настройка WiFi..."
+# ====================== ОПРЕДЕЛЕНИЕ РАДИО ======================
+echo "[*] Определение радио-устройств..."
 
-# Сохраняем радио-устройства, удаляем только интерфейсы
-echo "[*] Удаление старых WiFi интерфейсов..."
-while uci -q delete wireless.@wifi-iface[0] 2>/dev/null; do :; done
+# Функция поиска радио через разные методы
+find_radios() {
+    # Метод 1: UCI конфигурация
+    if [ -f /etc/config/wireless ]; then
+        RADIOS_UCI=$(uci show wireless 2>/dev/null | grep "='radio'" | cut -d. -f2 | cut -d= -f1)
+        if [ -n "$RADIOS_UCI" ]; then
+            echo "[*] Найдено через UCI: $RADIOS_UCI"
+            echo "$RADIOS_UCI"
+            return 0
+        fi
+    fi
+    
+    # Метод 2: Физические устройства через iw
+    if command -v iw >/dev/null 2>&1; then
+        PHY_DEVICES=$(iw list 2>/dev/null | grep "Wiphy" | awk '{print $2}')
+        if [ -n "$PHY_DEVICES" ]; then
+            echo "[*] Найдено через iw: $PHY_DEVICES"
+            for phy in $PHY_DEVICES; do
+                echo "radio${phy}"
+            done
+            return 0
+        fi
+    fi
+    
+    # Метод 3: Поиск в sysfs
+    if [ -d /sys/class/ieee80211 ]; then
+        SYSFS_PHY=$(ls /sys/class/ieee80211/ 2>/dev/null)
+        if [ -n "$SYSFS_PHY" ]; then
+            echo "[*] Найдено через sysfs: $SYSFS_PHY"
+            for phy in $SYSFS_PHY; do
+                echo "${phy}"
+            done
+            return 0
+        fi
+    fi
+    
+    return 1
+}
 
-# Получаем список радио-устройств
-echo "[*] Поиск радио-устройств..."
-RADIOS=$(uci show wireless | grep "='radio'" | cut -d. -f2 | cut -d= -f1)
+RADIOS=$(find_radios)
 
 if [ -z "$RADIOS" ]; then
-    echo "[!] Ошибка: радио-устройства не найдены!"
-    echo "    Создаю базовую конфигурацию..."
+    echo "[!] Радио-устройства не найдены!"
+    echo "[*] Пробуем создать через wifi config..."
     
-    # Создаем базовую конфигурацию WiFi
-    wifi config
+    # Удаляем старую конфигурацию
+    rm -f /etc/config/wireless
     
-    # Повторный поиск
-    RADIOS=$(uci show wireless | grep "='radio'" | cut -d. -f2 | cut -d= -f1)
+    # Создаем новую
+    wifi config 2>/dev/null || true
+    
+    # Пробуем снова
+    RADIOS=$(find_radios)
+    
+    if [ -z "$RADIOS" ]; then
+        echo "[!] КРИТИЧЕСКАЯ ОШИБКА: Не удалось обнаружить WiFi устройства!"
+        echo "    Проверьте:"
+        echo "    1. Установлены ли драйверы WiFi"
+        echo "    2. Работает ли WiFi модуль"
+        echo "    3. Вывод команды: iw list"
+        exit 1
+    fi
 fi
 
-echo "[✓] Найдены радио-устройства:"
-for radio in $RADIOS; do
-    band=$(uci get wireless.${radio}.band 2>/dev/null || echo "неизвестно")
-    channel=$(uci get wireless.${radio}.channel 2>/dev/null || echo "auto")
-    echo "    • $radio (band: $band, channel: $channel)"
-done
-
-# Разделяем на 2.4 и 5 GHz
+# Определяем 2.4GHz и 5GHz
 RADIO_24=""
 RADIO_5=""
+
 for radio in $RADIOS; do
-    band=$(uci get wireless.${radio}.band 2>/dev/null)
+    # Проверяем band в UCI если есть
+    band=$(uci get wireless.${radio}.band 2>/dev/null || echo "")
+    
     if [ "$band" = "2g" ]; then
         RADIO_24="$radio"
-        echo "[✓] 2.4GHz: $RADIO_24"
     elif [ "$band" = "5g" ]; then
         RADIO_5="$radio"
-        echo "[✓] 5GHz: $RADIO_5"
+    else
+        # Определяем по физическим возможностям
+        if command -v iw >/dev/null 2>&1; then
+            phy_num=$(echo "$radio" | sed 's/radio//' | sed 's/phy//')
+            bands=$(iw phy${phy_num} info 2>/dev/null | grep "Band [0-9]:" || echo "")
+            
+            if echo "$bands" | grep -q "Band 1:"; then
+                RADIO_24="$radio"
+                echo "[*] $radio поддерживает 2.4GHz (определено через iw)"
+            fi
+            if echo "$bands" | grep -q "Band 2:"; then
+                RADIO_5="$radio"
+                echo "[*] $radio поддерживает 5GHz (определено через iw)"
+            fi
+        fi
     fi
 done
 
-# Если не определили по band, используем первый и второй
+# Если не определили - используем первый как 2.4, второй как 5
 if [ -z "$RADIO_24" ] && [ -z "$RADIO_5" ]; then
-    RADIO_24=$(echo "$RADIOS" | head -1)
-    RADIO_5=$(echo "$RADIOS" | tail -1)
-    echo "[!] Band не определен, используем: 2.4GHz=$RADIO_24, 5GHz=$RADIO_5"
+    COUNT=0
+    for radio in $RADIOS; do
+        COUNT=$((COUNT + 1))
+    done
+    
+    if [ "$COUNT" -ge 2 ]; then
+        RADIO_24=$(echo "$RADIOS" | head -1)
+        RADIO_5=$(echo "$RADIOS" | tail -1)
+        echo "[*] Используем $RADIO_24 как 2.4GHz, $RADIO_5 как 5GHz"
+    elif [ "$COUNT" -eq 1 ]; then
+        RADIO_24=$(echo "$RADIOS" | head -1)
+        echo "[*] Найдено только одно радио: $RADIO_24"
+        echo "[*] Проверяем поддержку диапазонов..."
+        
+        # Пробуем определить какой это диапазон
+        if command -v iw >/dev/null 2>&1; then
+            phy_num=$(echo "$RADIO_24" | sed 's/radio//' | sed 's/phy//')
+            if iw phy${phy_num} info 2>/dev/null | grep -q "Band 2:"; then
+                RADIO_5="$RADIO_24"
+                echo "[*] $RADIO_24 будет использован для 5GHz"
+            else
+                echo "[*] $RADIO_24 будет использован для 2.4GHz"
+            fi
+        fi
+    fi
 fi
+
+echo "[✓] Итоговая конфигурация:"
+echo "    2.4GHz: ${RADIO_24:-не найден}"
+echo "    5GHz: ${RADIO_5:-не найден}"
 
 # Параметры в зависимости от типа
 if [ "$TYPE" = "R1" ]; then
@@ -135,24 +215,42 @@ else
     MOB_DOMAIN=""
 fi
 
-# Настройка радио и создание интерфейса
+# ====================== НАСТРОЙКА РАДИО ======================
+echo "[*] Настройка радио и создание интерфейсов..."
+
 setup_radio() {
     local radio="$1" channel="$2" nasid="$3" htmode="$4" band_name="$5"
     
+    if [ -z "$radio" ]; then
+        echo "[!] Пропускаем $band_name - радио не указано"
+        return 1
+    fi
+    
     echo "[*] Настройка $band_name ($radio)..."
     
-    # Включаем радио
+    # Проверяем существование радио в UCI
+    if ! uci get wireless.${radio} >/dev/null 2>&1; then
+        echo "[*] Создаем запись для $radio в UCI..."
+        uci set wireless.${radio}=wifi-device
+        uci set wireless.${radio}.type='mac80211'
+    fi
+    
+    # Настройка радио
     uci set wireless.${radio}.disabled='0'
     uci set wireless.${radio}.country='RU'
     uci set wireless.${radio}.channel="$channel"
     uci set wireless.${radio}.htmode="$htmode"
     uci set wireless.${radio}.noscan='1'
     
+    # Удаляем старые интерфейсы для этого радио
+    while uci -q delete wireless.@wifi-iface[$(uci show wireless | grep "device='${radio}'" | head -1 | cut -d[ -f2 | cut -d] -f1)] 2>/dev/null; do
+        :
+    done
+    
     # Создаем новый интерфейс
     uci add wireless wifi-iface
     local iface="wireless.@wifi-iface[-1]"
     
-    # Привязываем к радио
     uci set ${iface}.device="$radio"
     uci set ${iface}.mode='ap'
     uci set ${iface}.network='lan'
@@ -165,8 +263,6 @@ setup_radio() {
     uci set ${iface}.wpa_group_rekey='3600'
     uci set ${iface}.isolate='0'
     uci set ${iface}.disassoc_low_ack='0'
-    uci set ${iface}.beacon_int='100'
-    uci set ${iface}.dtim_period='2'
     
     # Роуминг
     if [ "$ROAMING" = "1" ] && [ -n "$nasid" ]; then
@@ -191,32 +287,19 @@ setup_radio() {
 }
 
 # Настройка диапазонов
-if [ -n "$RADIO_24" ]; then
-    setup_radio "$RADIO_24" "$CH24" "$NAS24" "HT20" "2.4GHz"
-else
-    echo "[!] 2.4GHz радио не найдено"
-fi
+setup_radio "$RADIO_24" "$CH24" "$NAS24" "HT20" "2.4GHz"
+setup_radio "$RADIO_5" "$CH5" "$NAS5" "VHT80" "5GHz"
 
-if [ -n "$RADIO_5" ]; then
-    setup_radio "$RADIO_5" "$CH5" "$NAS5" "VHT80" "5GHz"
-else
-    echo "[!] 5GHz радио не найдено"
-fi
-
-# Сохраняем WiFi конфигурацию
-echo "[*] Сохранение WiFi конфигурации..."
+# Сохраняем
+echo "[*] Сохранение конфигурации..."
 uci commit wireless
 
-# Проверка созданных интерфейсов
-echo "[*] Проверка конфигурации:"
-echo "    Радио:"
-uci show wireless | grep "='radio'" | while read line; do
-    echo "      $line"
-done
-echo "    Интерфейсы:"
-uci show wireless | grep "='wifi-iface'" | while read line; do
-    echo "      $line"
-done
+# Проверка результата
+echo "[*] Проверка созданной конфигурации:"
+echo "--- Радио ---"
+uci show wireless | grep "='radio'" || echo "  НЕТ РАДИО!"
+echo "--- Интерфейсы ---"
+uci show wireless | grep "='wifi-iface'" || echo "  НЕТ ИНТЕРФЕЙСОВ!"
 
 # ====================== СЕТЬ ======================
 echo "[*] Настройка сети..."
@@ -250,62 +333,27 @@ fi
 
 # ====================== ПРИМЕНЕНИЕ ======================
 echo "[*] Применение настроек..."
-
-# Перезагружаем WiFi
-echo "[*] Перезагрузка WiFi..."
 wifi reload 2>&1 || wifi up 2>&1
 
-# Проверка статуса
 sleep 3
+
 echo ""
-echo "[*] Статус WiFi после применения:"
+echo "[*] Статус WiFi:"
 if command -v iwinfo >/dev/null 2>&1; then
-    iwinfo 2>/dev/null | grep -E "ESSID|Channel|Mode|Quality" || echo "    (iwinfo не показал интерфейсы)"
+    for iface in $(iwinfo 2>/dev/null | grep -o "wlan[0-9]" | sort -u); do
+        echo "  $iface: $(iwinfo $iface info 2>/dev/null | grep -E "ESSID|Channel|Mode" | tr '\n' ' ')"
+    done
 else
-    echo "    (iwinfo не установлен, проверьте визуально)"
+    echo "  (iwinfo не установлен)"
 fi
 
-if [ "$TYPE" = "R2" ]; then
-    /etc/init.d/network restart 2>/dev/null || true
-fi
-
-# ====================== РЕЗУЛЬТАТ ======================
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║            НАСТРОЙКА ЗАВЕРШЕНА                           ║"
+echo "║                    НАСТРОЙКА ЗАВЕРШЕНА                   ║"
 echo "╠══════════════════════════════════════════════════════════╣"
-echo "║ Режим:           $TYPE                                       ║"
 echo "║ SSID:            $SSID                                ║"
-echo "║ Шифрование:      WPA2-PSK                              ║"
-echo "║ Пароль:          $PASSWORD                        ║"
-echo "╠══════════════════════════════════════════════════════════╣"
-
-if [ "$ROAMING" = "1" ]; then
-    echo "║ РОУМИНГ ВКЛЮЧЕН:                                      ║"
-    echo "║  ✓ 802.11r (Fast BSS Transition)                       ║"
-    echo "║  ✓ 802.11k (Neighbor Reports)                          ║"
-    echo "║  ✓ 802.11v (BSS Transition)                            ║"
-    echo "║  Mobility Domain: $MOB_DOMAIN                                    ║"
-else
-    echo "║ Режим:           Стандартный WiFi                       ║"
-fi
-
-echo "╠══════════════════════════════════════════════════════════╣"
-
-if [ -n "$RADIO_24" ]; then
-    echo "║ 2.4GHz:          Канал: $CH24                              ║"
-    [ -n "$NAS24" ] && echo "║                  NASID: $NAS24              ║"
-fi
-if [ -n "$RADIO_5" ]; then
-    echo "║ 5GHz:            Канал: $CH5                             ║"
-    [ -n "$NAS5" ] && echo "║                  NASID: $NAS5               ║"
-fi
-
+echo "║ Режим:           $TYPE                                       ║"
+echo "║ Роуминг:         $([ "$ROAMING" = "1" ] && echo 'ВКЛЮЧЕН' || echo 'ОТКЛЮЧЕН')                              ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
-
 echo "[✓] Готово!"
-echo ""
-echo "[*] Для проверки выполните:"
-echo "    uci show wireless"
-echo "    iwinfo"
