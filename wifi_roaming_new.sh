@@ -1,49 +1,43 @@
 #!/bin/sh
 #
 # Universal OpenWrt WiFi Setup Script (исправленная версия)
-# OpenWrt 24.10.6 и 25.12+
+# OpenWrt 24.10 + 25.12
 
 set -e
 
 # ----------------------------
-# Определение версии OpenWrt
+# Определение версии
 # ----------------------------
 detect_openwrt_version() {
     if [ -f /etc/openwrt_release ]; then
         VERSION=$(grep "DISTRIB_RELEASE" /etc/openwrt_release | cut -d"'" -f2)
         echo "[*] OpenWrt: $VERSION"
         
-        if command -v apk > /dev/null 2>&1; then
-            PKG_MANAGER="apk"
+        if command -v apk >/dev/null 2>&1; then
             PKG_UPDATE="apk update"
             PKG_INSTALL="apk add"
             PKG_REMOVE="apk del"
             PKG_LIST="apk info"
-        elif command -v opkg > /dev/null 2>&1; then
-            PKG_MANAGER="opkg"
+        else
             PKG_UPDATE="opkg update"
             PKG_INSTALL="opkg install"
             PKG_REMOVE="opkg remove"
             PKG_LIST="opkg list-installed"
-        else
-            echo "[!] Нет менеджера пакетов"
-            exit 1
         fi
     else
-        echo "[!] Не OpenWrt"
-        exit 1
+        echo "[!] Не OpenWrt"; exit 1
     fi
 }
 
 # ----------------------------
-# Интерактивный ввод
+# Ввод параметров
 # ----------------------------
 input_parameters() {
     clear
     echo "╔══════════════════════════════════════════════════════════╗"
     echo "║          OpenWrt WiFi Setup Wizard                     ║"
     echo "╚══════════════════════════════════════════════════════════╝"
-    
+
     while true; do
         echo "1) Соло роутер"
         echo "2) Основной роутер R1 (роуминг)"
@@ -64,7 +58,7 @@ input_parameters() {
     done
 
     while true; do
-        read -r -p "Пароль (≥8 симв.): " PASSWORD
+        read -r -p "Пароль (минимум 8 символов): " PASSWORD
         [ ${#PASSWORD} -ge 8 ] && break
         echo "[!] Слишком короткий пароль"
     done
@@ -78,9 +72,9 @@ input_parameters() {
     echo "Режим: $ROUTER_TYPE"
     echo "SSID: $SSID"
     echo "Роуминг: $([ "$ROAMING_ENABLED" = "1" ] && echo "ВКЛ" || echo "ВЫКЛ")"
-    [ "$ROUTER_TYPE" = "R2" ] && echo "R1 IP: $R1_IP"
+    [ "$ROUTER_TYPE" = "R2" ] && echo "IP R1: $R1_IP"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    read -r -p "Продолжить? [Y/n]: " CONFIRM
+    read -r -p "Всё верно? [Y/n]: " CONFIRM
     [ "$CONFIRM" = "n" ] || [ "$CONFIRM" = "N" ] && exit 0
 }
 
@@ -89,41 +83,42 @@ input_parameters() {
 # ----------------------------
 setup_packages() {
     echo "[*] Установка пакетов..."
-    $PKG_UPDATE > /dev/null 2>&1
-    
-    # Удаление урезанных wpad
-    for pkg in $($PKG_LIST 2>/dev/null | grep -E '^wpad-' || true); do
+    $PKG_UPDATE >/dev/null 2>&1
+
+    for pkg in $($PKG_LIST 2>/dev/null | grep '^wpad-' || true); do
         case "$pkg" in
-            wpad-basic*|wpad-mini) $PKG_REMOVE "$pkg" > /dev/null 2>&1 || true ;;
+            wpad-basic*|wpad-mini) $PKG_REMOVE "$pkg" >/dev/null 2>&1 || true ;;
         esac
     done
 
     for wpadv in wpad-openssl wpad-mbedtls wpad; do
-        if $PKG_INSTALL "$wpadv" > /dev/null 2>&1; then
-            echo "[✓] $wpadv"
+        if $PKG_INSTALL "$wpadv" >/dev/null 2>&1; then
+            echo "[✓] Установлен $wpadv"
             break
         fi
     done
 }
 
 # ----------------------------
-# WiFi интерфейсы
+# Определение WiFi (исправлено под ash)
 # ----------------------------
 detect_wifi_interfaces() {
-    echo "[*] Поиск WiFi..."
-    RADIO_24G="" RADIO_5G=""
+    echo "[*] Поиск WiFi интерфейсов..."
+    RADIO_24G="" RADIO_5G="" RADIO_24G_NAME="" RADIO_5G_NAME=""
 
     for radio in $(uci show wireless 2>/dev/null | grep '=radio' | cut -d. -f1-2 | sort -u); do
         name=$(echo "$radio" | cut -d. -f2)
         band=$(uci get ${radio}.band 2>/dev/null)
-        if [ "$band" = "2g" ] || grep -qE '11g|11n' <<< "$(uci get ${radio}.hwmode 2>/dev/null)"; then
+        hwmode=$(uci get ${radio}.hwmode 2>/dev/null)
+
+        if [ "$band" = "2g" ] || echo "$hwmode" | grep -qE '11g|11n'; then
             [ -z "$RADIO_24G" ] && RADIO_24G="$radio" && RADIO_24G_NAME="$name"
-        elif [ "$band" = "5g" ] || grep -qE '11a|11ac|11ax' <<< "$(uci get ${radio}.hwmode 2>/dev/null)"; then
+        elif [ "$band" = "5g" ] || echo "$hwmode" | grep -qE '11a|11ac|11ax'; then
             [ -z "$RADIO_5G" ] && RADIO_5G="$radio" && RADIO_5G_NAME="$name"
         fi
     done
 
-    [ -z "$RADIO_24G" ] && [ -z "$RADIO_5G" ] && { echo "[!] WiFi не найдены"; exit 1; }
+    [ -z "$RADIO_24G" ] && [ -z "$RADIO_5G" ] && { echo "[!] WiFi интерфейсы не найдены"; exit 1; }
 }
 
 # ----------------------------
@@ -148,7 +143,7 @@ set_parameters() {
 }
 
 # ----------------------------
-# Настройка одной полосы
+# Настройка полосы
 # ----------------------------
 configure_wifi_band() {
     local RADIO_PATH="$1" RADIO_NAME="$2" CHANNEL="$3" NASID="$4" BAND="$5"
@@ -161,7 +156,7 @@ configure_wifi_band() {
     uci set ${RADIO_PATH}.htmode="$([ "$BAND" = "2.4GHz" ] && echo 'HT20' || echo 'VHT80')"
     uci set ${RADIO_PATH}.noscan='1'
 
-    uci add wireless wifi-iface > /dev/null
+    uci add wireless wifi-iface >/dev/null
     local IFACE="wireless.@wifi-iface[-1]"
 
     uci set ${IFACE}.device="$RADIO_NAME"
@@ -171,7 +166,6 @@ configure_wifi_band() {
     uci set ${IFACE}.encryption='psk2'
     uci set ${IFACE}.key="$PASSWORD"
 
-    # Общие оптимизации
     uci set ${IFACE}.wmm='1'
     uci set ${IFACE}.wpa_group_rekey='3600'
     uci set ${IFACE}.isolate='0'
@@ -197,7 +191,7 @@ configure_wifi_band() {
 }
 
 # ----------------------------
-# DHCP (SOLO / R1)
+# DHCP (SOLO/R1)
 # ----------------------------
 configure_dhcp() {
     echo "[*] Настройка DHCP..."
@@ -209,24 +203,23 @@ configure_dhcp() {
 }
 
 # ----------------------------
-# AP Mode (R2)
+# Режим точки доступа (R2)
 # ----------------------------
 configure_ap_mode() {
     echo "[*] Настройка AP режима..."
-    DEFAULT_IP="192.168.1.2"
-    read -r -p "IP этой точки [$DEFAULT_IP]: " AP_IP
-    AP_IP=${AP_IP:-$DEFAULT_IP}
+    read -r -p "IP этой точки [192.168.1.2]: " AP_IP
+    AP_IP=${AP_IP:-192.168.1.2}
 
     uci set network.lan.ipaddr="$AP_IP"
     uci set network.lan.gateway="$ROUTER_IP"
     uci set network.lan.dns="$ROUTER_IP"
     uci set dhcp.lan.ignore='1'
 
-    /etc/init.d/dnsmasq disable 2>/dev/null && /etc/init.d/dnsmasq stop 2>/dev/null || true
+    /etc/init.d/dnsmasq stop 2>/dev/null && /etc/init.d/dnsmasq disable 2>/dev/null || true
 
-    read -r -p "Отключить firewall? [Y/n]: " DISABLE_FW
-    if [ "$DISABLE_FW" != "n" ] && [ "$DISABLE_FW" != "N" ]; then
-        /etc/init.d/firewall disable 2>/dev/null && /etc/init.d/firewall stop 2>/dev/null || true
+    read -r -p "Отключить firewall? [Y/n]: " FW
+    if [ "$FW" != "n" ] && [ "$FW" != "N" ]; then
+        /etc/init.d/firewall stop 2>/dev/null && /etc/init.d/firewall disable 2>/dev/null || true
     fi
 }
 
@@ -234,10 +227,10 @@ configure_ap_mode() {
 # Применение
 # ----------------------------
 apply_settings() {
-    echo "[*] Применение..."
+    echo "[*] Применение настроек..."
     uci commit wireless
     uci commit network
-    [ "$ROUTER_TYPE" != "R2" ] && uci commit dhcp || true
+    [ "$ROUTER_TYPE" != "R2" ] && uci commit dhcp
 
     wifi reload 2>/dev/null || wifi
     [ "$ROUTER_TYPE" = "R2" ] && /etc/init.d/network restart 2>/dev/null || true
@@ -247,11 +240,13 @@ apply_settings() {
 # Результат
 # ----------------------------
 show_results() {
+    echo ""
     echo "╔══════════════════════════════════════════════════════════╗"
-    echo "║               НАСТРОЙКА ЗАВЕРШЕНА                      ║"
+    echo "║               НАСТРОЙКА ЗАВЕРШЕНА УСПЕШНО               ║"
     echo "╚══════════════════════════════════════════════════════════╝"
     echo "Режим: $ROUTER_TYPE | SSID: $SSID"
     echo "Роуминг: $([ "$ROAMING_ENABLED" = "1" ] && echo "ВКЛ (802.11r/k/v)" || echo "ВЫКЛ")"
+    echo ""
 }
 
 # ============================
@@ -262,7 +257,7 @@ main() {
     detect_wifi_interfaces
     set_parameters
 
-    # Очистка
+    # Очистка старых iface
     while uci -q delete wireless.@wifi-iface[0]; do :; done
 
     [ -n "$RADIO_24G" ] && configure_wifi_band "$RADIO_24G" "$RADIO_24G_NAME" "$RADIO_24G_CH" "$NASID_24" "2.4GHz"
