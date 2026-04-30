@@ -30,11 +30,7 @@ fi
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Режим: $TYPE"
-if [ "$ROAMING" = "1" ]; then
-    echo "Роуминг: ВКЛЮЧЕН (802.11r/k/v)"
-else
-    echo "Роуминг: ОТКЛЮЧЕН"
-fi
+echo "Роуминг: $([ "$ROAMING" = "1" ] && echo 'ВКЛЮЧЕН' || echo 'ОТКЛЮЧЕН')"
 echo "SSID: $SSID"
 [ "$TYPE" = "R2" ] && echo "IP R1: $R1_IP"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -77,20 +73,52 @@ echo "[✓] Пакеты установлены"
 # ====================== НАСТРОЙКА WIFI ======================
 echo "[*] Настройка WiFi..."
 
-# Очистка существующих интерфейсов
+# Сохраняем радио-устройства, удаляем только интерфейсы
+echo "[*] Удаление старых WiFi интерфейсов..."
 while uci -q delete wireless.@wifi-iface[0] 2>/dev/null; do :; done
 
-# Поиск радио-интерфейсов
-RADIO_24=""; RADIO_5=""
-for r in $(uci show wireless 2>/dev/null | grep '=radio' | cut -d. -f1-2); do
-    name=$(echo $r | cut -d. -f2)
-    band=$(uci get ${r}.band 2>/dev/null)
+# Получаем список радио-устройств
+echo "[*] Поиск радио-устройств..."
+RADIOS=$(uci show wireless | grep "='radio'" | cut -d. -f2 | cut -d= -f1)
+
+if [ -z "$RADIOS" ]; then
+    echo "[!] Ошибка: радио-устройства не найдены!"
+    echo "    Создаю базовую конфигурацию..."
+    
+    # Создаем базовую конфигурацию WiFi
+    wifi config
+    
+    # Повторный поиск
+    RADIOS=$(uci show wireless | grep "='radio'" | cut -d. -f2 | cut -d= -f1)
+fi
+
+echo "[✓] Найдены радио-устройства:"
+for radio in $RADIOS; do
+    band=$(uci get wireless.${radio}.band 2>/dev/null || echo "неизвестно")
+    channel=$(uci get wireless.${radio}.channel 2>/dev/null || echo "auto")
+    echo "    • $radio (band: $band, channel: $channel)"
+done
+
+# Разделяем на 2.4 и 5 GHz
+RADIO_24=""
+RADIO_5=""
+for radio in $RADIOS; do
+    band=$(uci get wireless.${radio}.band 2>/dev/null)
     if [ "$band" = "2g" ]; then
-        RADIO_24="$r"; NAME_24="$name"
+        RADIO_24="$radio"
+        echo "[✓] 2.4GHz: $RADIO_24"
     elif [ "$band" = "5g" ]; then
-        RADIO_5="$r"; NAME_5="$name"
+        RADIO_5="$radio"
+        echo "[✓] 5GHz: $RADIO_5"
     fi
 done
+
+# Если не определили по band, используем первый и второй
+if [ -z "$RADIO_24" ] && [ -z "$RADIO_5" ]; then
+    RADIO_24=$(echo "$RADIOS" | head -1)
+    RADIO_5=$(echo "$RADIOS" | tail -1)
+    echo "[!] Band не определен, используем: 2.4GHz=$RADIO_24, 5GHz=$RADIO_5"
+fi
 
 # Параметры в зависимости от типа
 if [ "$TYPE" = "R1" ]; then
@@ -107,29 +135,25 @@ else
     MOB_DOMAIN=""
 fi
 
-# Функция настройки диапазона
-setup_band() {
-    local radio_path="$1" radio_name="$2" channel="$3" nasid="$4" band_name="$5"
+# Настройка радио и создание интерфейса
+setup_radio() {
+    local radio="$1" channel="$2" nasid="$3" htmode="$4" band_name="$5"
     
-    echo "[*] Настройка $band_name ($radio_name)..."
+    echo "[*] Настройка $band_name ($radio)..."
     
-    # Настройка радио
-    uci set ${radio_path}.disabled='0'
-    uci set ${radio_path}.country='RU'
-    uci set ${radio_path}.channel="$channel"
+    # Включаем радио
+    uci set wireless.${radio}.disabled='0'
+    uci set wireless.${radio}.country='RU'
+    uci set wireless.${radio}.channel="$channel"
+    uci set wireless.${radio}.htmode="$htmode"
+    uci set wireless.${radio}.noscan='1'
     
-    if [ "$band_name" = "2.4GHz" ]; then
-        uci set ${radio_path}.htmode='HT20'
-    else
-        uci set ${radio_path}.htmode='VHT80'
-    fi
-    
-    # Создание интерфейса
-    uci add wireless wifi-iface >/dev/null
+    # Создаем новый интерфейс
+    uci add wireless wifi-iface
     local iface="wireless.@wifi-iface[-1]"
     
-    # Базовые настройки
-    uci set ${iface}.device="$radio_name"
+    # Привязываем к радио
+    uci set ${iface}.device="$radio"
     uci set ${iface}.mode='ap'
     uci set ${iface}.network='lan'
     uci set ${iface}.ssid="$SSID"
@@ -144,11 +168,10 @@ setup_band() {
     uci set ${iface}.beacon_int='100'
     uci set ${iface}.dtim_period='2'
     
-    # Настройки роуминга (только если включен)
+    # Роуминг
     if [ "$ROAMING" = "1" ] && [ -n "$nasid" ]; then
-        echo "  [+] Включение протоколов роуминга..."
+        echo "  [+] Включение роуминга (NASID: $nasid)..."
         
-        # 802.11r Fast BSS Transition
         uci set ${iface}.ieee80211r='1'
         uci set ${iface}.mobility_domain="$MOB_DOMAIN"
         uci set ${iface}.ft_over_ds='1'
@@ -156,34 +179,49 @@ setup_band() {
         uci set ${iface}.nasid="$nasid"
         uci set ${iface}.pmk_r1_push='1'
         
-        # 802.11k Radio Resource Management
         uci set ${iface}.ieee80211k='1'
         uci set ${iface}.rrm_neighbor_report='1'
         uci set ${iface}.rrm_beacon_report='1'
         
-        # 802.11v Wireless Network Management
         uci set ${iface}.ieee80211v='1'
         uci set ${iface}.bss_transition='1'
-        
-        echo "  [✓] Роуминг настроен (NASID: $nasid)"
     fi
     
-    echo "[✓] $band_name готов"
+    echo "  [✓] $band_name настроен (канал: $channel, htmode: $htmode)"
 }
 
-# Настройка 2.4 GHz
-[ -n "$RADIO_24" ] && setup_band "$RADIO_24" "$NAME_24" "$CH24" "$NAS24" "2.4GHz"
+# Настройка диапазонов
+if [ -n "$RADIO_24" ]; then
+    setup_radio "$RADIO_24" "$CH24" "$NAS24" "HT20" "2.4GHz"
+else
+    echo "[!] 2.4GHz радио не найдено"
+fi
 
-# Настройка 5 GHz
-[ -n "$RADIO_5" ] && setup_band "$RADIO_5" "$NAME_5" "$CH5" "$NAS5" "5GHz"
+if [ -n "$RADIO_5" ]; then
+    setup_radio "$RADIO_5" "$CH5" "$NAS5" "VHT80" "5GHz"
+else
+    echo "[!] 5GHz радио не найдено"
+fi
 
+# Сохраняем WiFi конфигурацию
+echo "[*] Сохранение WiFi конфигурации..."
 uci commit wireless
+
+# Проверка созданных интерфейсов
+echo "[*] Проверка конфигурации:"
+echo "    Радио:"
+uci show wireless | grep "='radio'" | while read line; do
+    echo "      $line"
+done
+echo "    Интерфейсы:"
+uci show wireless | grep "='wifi-iface'" | while read line; do
+    echo "      $line"
+done
 
 # ====================== СЕТЬ ======================
 echo "[*] Настройка сети..."
 
 if [ "$TYPE" = "R2" ]; then
-    # Точка доступа
     AP_IP=${AP_IP:-192.168.1.2}
     read -r -p "IP для этой точки доступа [$AP_IP]: " input_ip
     AP_IP=${input_ip:-$AP_IP}
@@ -196,13 +234,11 @@ if [ "$TYPE" = "R2" ]; then
     uci commit network
     uci commit dhcp
     
-    # Отключаем DHCP и firewall
     /etc/init.d/dnsmasq disable 2>/dev/null || true
     /etc/init.d/dnsmasq stop 2>/dev/null || true
     /etc/init.d/firewall disable 2>/dev/null || true
     /etc/init.d/firewall stop 2>/dev/null || true
 else
-    # Соло или R1
     uci set network.lan.netmask='255.255.255.0'
     uci set dhcp.lan.start='100'
     uci set dhcp.lan.limit='150'
@@ -214,7 +250,20 @@ fi
 
 # ====================== ПРИМЕНЕНИЕ ======================
 echo "[*] Применение настроек..."
-wifi reload 2>/dev/null || wifi
+
+# Перезагружаем WiFi
+echo "[*] Перезагрузка WiFi..."
+wifi reload 2>&1 || wifi up 2>&1
+
+# Проверка статуса
+sleep 3
+echo ""
+echo "[*] Статус WiFi после применения:"
+if command -v iwinfo >/dev/null 2>&1; then
+    iwinfo 2>/dev/null | grep -E "ESSID|Channel|Mode|Quality" || echo "    (iwinfo не показал интерфейсы)"
+else
+    echo "    (iwinfo не установлен, проверьте визуально)"
+fi
 
 if [ "$TYPE" = "R2" ]; then
     /etc/init.d/network restart 2>/dev/null || true
@@ -223,7 +272,7 @@ fi
 # ====================== РЕЗУЛЬТАТ ======================
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║            НАСТРОЙКА ЗАВЕРШЕНА УСПЕШНО                   ║"
+echo "║            НАСТРОЙКА ЗАВЕРШЕНА                           ║"
 echo "╠══════════════════════════════════════════════════════════╣"
 echo "║ Режим:           $TYPE                                       ║"
 echo "║ SSID:            $SSID                                ║"
@@ -243,11 +292,11 @@ fi
 
 echo "╠══════════════════════════════════════════════════════════╣"
 
-if [ -n "$NAME_24" ]; then
+if [ -n "$RADIO_24" ]; then
     echo "║ 2.4GHz:          Канал: $CH24                              ║"
     [ -n "$NAS24" ] && echo "║                  NASID: $NAS24              ║"
 fi
-if [ -n "$NAME_5" ]; then
+if [ -n "$RADIO_5" ]; then
     echo "║ 5GHz:            Канал: $CH5                             ║"
     [ -n "$NAS5" ] && echo "║                  NASID: $NAS5               ║"
 fi
@@ -255,10 +304,8 @@ fi
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
 
-if [ "$TYPE" = "R2" ]; then
-    echo "[!] ВАЖНО: Убедитесь, что точка доступа подключена к R1 через LAN порт"
-    echo "    IP точки доступа: $AP_IP"
-    echo "    IP основного роутера: $R1_IP"
-fi
-
 echo "[✓] Готово!"
+echo ""
+echo "[*] Для проверки выполните:"
+echo "    uci show wireless"
+echo "    iwinfo"
