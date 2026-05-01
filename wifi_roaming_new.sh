@@ -4,6 +4,7 @@
 # Solo Router + Seamless Roaming (R1/R2)
 # Безопасно работает с существующей конфигурацией
 # Поддержка OpenWrt 24.10+ и 25.12+
+# ИСПРАВЛЕНО ДЛЯ CUDY TR3000
 #
 
 echo "╔══════════════════════════════════════════════════════════╗"
@@ -105,7 +106,6 @@ elif [ "$ROUTER_TYPE" = "R2" ]; then
     NASID_5="${SSID}_5G_R2"
     MOBILITY_DOMAIN="a1b2"
 else
-    # Соло режим - сохраняем текущие каналы или ставим默认ные
     RADIO0_CH=$(uci get wireless.radio0.channel 2>/dev/null || echo "1")
     RADIO1_CH=$(uci get wireless.radio1.channel 2>/dev/null || echo "36")
 fi
@@ -113,25 +113,39 @@ fi
 # ====================== ОПРЕДЕЛЕНИЕ ИНТЕРФЕЙСОВ ======================
 echo "[*] Определение WiFi интерфейсов..."
 
-# Проверяем существование radio0 и radio1
-if ! uci get wireless.radio0 >/dev/null 2>&1; then
-    echo "[!] radio0 не найден! Создаю базовую конфигурацию..."
-    rm -f /etc/config/wireless
-    wifi config
-    
-    # Проверяем ещё раз
-    if ! uci get wireless.radio0 >/dev/null 2>&1; then
-        echo "[!] КРИТИЧЕСКАЯ ОШИБКА: Не удалось создать radio0!"
-        echo "    Восстановите конфигурацию вручную:"
-        echo "    rm -f /etc/config/wireless && wifi config"
-        exit 1
-    fi
+# АКТИВИРУЕМ ИНТЕРФЕЙСЫ (главное исправление!)
+echo "[*] Активация WiFi интерфейсов..."
+if uci get wireless.default_radio0 >/dev/null 2>&1; then
+    uci set wireless.default_radio0.disabled='0'
 fi
 
-# Получаем имена интерфейсов (могут быть wifinet0/wifinet1 или default_radio0/default_radio1)
-IFACE_24=$(uci show wireless | grep "device='radio0'" | head -1 | cut -d. -f2 | cut -d= -f1)
-IFACE_5=$(uci show wireless | grep "device='radio1'" | head -1 | cut -d. -f2 | cut -d= -f1)
+if uci get wireless.default_radio1 >/dev/null 2>&1; then
+    uci set wireless.default_radio1.disabled='0'
+fi
 
+# Теперь находим интерфейсы (уже активные)
+IFACE_24=""
+IFACE_5=""
+
+# Пробуем стандартные имена
+if uci get wireless.default_radio0 >/dev/null 2>&1; then
+    IFACE_24="default_radio0"
+fi
+
+if uci get wireless.default_radio1 >/dev/null 2>&1; then
+    IFACE_5="default_radio1"
+fi
+
+# Если стандартных нет - ищем как в оригинальном скрипте
+if [ -z "$IFACE_24" ]; then
+    IFACE_24=$(uci show wireless | grep "device='radio0'" | head -1 | cut -d. -f2 | cut -d= -f1)
+fi
+
+if [ -z "$IFACE_5" ]; then
+    IFACE_5=$(uci show wireless | grep "device='radio1'" | head -1 | cut -d. -f2 | cut -d= -f1)
+fi
+
+# Если всё ещё нет - создаём
 if [ -z "$IFACE_24" ]; then
     echo "[!] Интерфейс для radio0 не найден! Создаю..."
     uci add wireless wifi-iface >/dev/null
@@ -165,6 +179,12 @@ uci set wireless.${IFACE_24}.ssid="$SSID"
 uci set wireless.${IFACE_24}.encryption='psk2'
 uci set wireless.${IFACE_24}.key="$PASSWORD"
 uci set wireless.${IFACE_24}.wmm='1'
+uci set wireless.${IFACE_24}.disabled='0'  # ЯВНО ВКЛЮЧАЕМ
+
+# Удаляем старые опции роуминга (очистка)
+for opt in ieee80211r mobility_domain ft_over_ds ft_psk_generate_local nasid ieee80211k rrm_neighbor_report ieee80211v bss_transition rssi_min disassoc_low_ack; do
+    uci -q delete wireless.${IFACE_24}.${opt} 2>/dev/null || true
+done
 
 # Роуминг для 2.4GHz
 if [ "$ROAMING" = "1" ]; then
@@ -178,11 +198,6 @@ if [ "$ROAMING" = "1" ]; then
     uci set wireless.${IFACE_24}.rrm_neighbor_report='1'
     uci set wireless.${IFACE_24}.ieee80211v='1'
     uci set wireless.${IFACE_24}.bss_transition='1'
-else
-    # Удаляем настройки роуминга если есть
-    for opt in ieee80211r mobility_domain ft_over_ds ft_psk_generate_local nasid ieee80211k rrm_neighbor_report ieee80211v bss_transition; do
-        uci -q delete wireless.${IFACE_24}.${opt} 2>/dev/null || true
-    done
 fi
 
 # Настройка 5GHz
@@ -195,6 +210,12 @@ uci set wireless.${IFACE_5}.ssid="$SSID"
 uci set wireless.${IFACE_5}.encryption='psk2'
 uci set wireless.${IFACE_5}.key="$PASSWORD"
 uci set wireless.${IFACE_5}.wmm='1'
+uci set wireless.${IFACE_5}.disabled='0'  # ЯВНО ВКЛЮЧАЕМ
+
+# Удаляем старые опции роуминга (очистка)
+for opt in ieee80211r mobility_domain ft_over_ds ft_psk_generate_local nasid ieee80211k rrm_neighbor_report ieee80211v bss_transition rssi_min disassoc_low_ack; do
+    uci -q delete wireless.${IFACE_5}.${opt} 2>/dev/null || true
+done
 
 # Роуминг для 5GHz
 if [ "$ROAMING" = "1" ]; then
@@ -208,11 +229,6 @@ if [ "$ROAMING" = "1" ]; then
     uci set wireless.${IFACE_5}.rrm_neighbor_report='1'
     uci set wireless.${IFACE_5}.ieee80211v='1'
     uci set wireless.${IFACE_5}.bss_transition='1'
-else
-    # Удаляем настройки роуминга если есть
-    for opt in ieee80211r mobility_domain ft_over_ds ft_psk_generate_local nasid ieee80211k rrm_neighbor_report ieee80211v bss_transition; do
-        uci -q delete wireless.${IFACE_5}.${opt} 2>/dev/null || true
-    done
 fi
 
 # Сохраняем WiFi
