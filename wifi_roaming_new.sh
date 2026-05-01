@@ -1,312 +1,130 @@
 #!/bin/sh
-#
-# Universal OpenWrt WiFi Setup Script
-# Solo Router + Seamless Roaming (R1/R2)
-# Безопасно работает с существующей конфигурацией
-# Поддержка OpenWrt 24.10+ и 25.12+
-# ИСПРАВЛЕНО ДЛЯ CUDY TR3000
-#
+# OpenWrt 24.10 / 25.12 Safe Edition
+# Seamless Wi-Fi Roaming: R1 + APs
 
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║          OpenWrt WiFi Setup Wizard                     ║"
-echo "║     Соло роутер или Бесшовный роуминг                  ║"
-echo "╚══════════════════════════════════════════════════════════╝"
-echo ""
-
-# ====================== ВЫБОР РЕЖИМА ======================
-while true; do
-    echo "Выберите режим работы:"
-    echo "  1) Соло роутер (обычный WiFi)"
-    echo "  2) Основной роутер R1 (роуминг + DHCP)"
-    echo "  3) Точка доступа R2 (роуминг)"
-    read -r -p "Ваш выбор [1-3]: " ROUTER_CHOICE
-    
-    case "$ROUTER_CHOICE" in
-        1) ROUTER_TYPE="SOLO"; ROAMING=0; break ;;
-        2) ROUTER_TYPE="R1";   ROAMING=1; break ;;
-        3) ROUTER_TYPE="R2";   ROAMING=1; break ;;
-        *) echo "[!] Неверный выбор! Попробуйте снова." ;;
-    esac
-done
-
-echo ""
-read -r -p "Введите имя WiFi сети (SSID): " SSID
-read -r -p "Введите пароль WiFi (минимум 8 символов): " PASSWORD
-
-if [ "$ROUTER_TYPE" = "R2" ]; then
-    echo ""
-    read -r -p "Введите IP основного роутера R1 [192.168.1.1]: " R1_IP
-    R1_IP=${R1_IP:-192.168.1.1}
-fi
-
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Тип роутера: $ROUTER_TYPE"
-if [ "$ROAMING" = "1" ]; then
-    echo "Роуминг: ВКЛЮЧЕН (802.11r/k/v)"
-else
-    echo "Роуминг: ОТКЛЮЧЕН"
-fi
-echo "SSID: $SSID"
-echo "Пароль: $PASSWORD"
-[ "$ROUTER_TYPE" = "R2" ] && echo "IP R1: $R1_IP"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-read -r -p "Всё верно? Продолжить? [Y/n]: " CONFIRM
-[ "$CONFIRM" = "n" ] || [ "$CONFIRM" = "N" ] && exit 0
-
-echo ""
-echo "[*] Настройка $ROUTER_TYPE..."
-
-# ====================== ПАКЕТЫ ======================
-echo "[*] Проверка и установка wpad..."
-
-if command -v apk >/dev/null 2>&1; then
-    # OpenWrt 25.12+
-    apk update >/dev/null 2>&1
-    
-    # Удаляем урезанные версии
-    for pkg in wpad-basic wpad-basic-mbedtls wpad-basic-openssl wpad-mini; do
-        apk del "$pkg" 2>/dev/null || true
-    done
-    
-    # Устанавливаем полный wpad (нужен для роуминга)
-    if [ "$ROAMING" = "1" ]; then
-        echo "[*] Установка wpad-openssl для поддержки роуминга..."
-        apk add wpad-openssl 2>/dev/null || apk add wpad 2>/dev/null
-    fi
-elif command -v opkg >/dev/null 2>&1; then
-    # OpenWrt 24.10 и ранее
-    opkg update >/dev/null 2>&1
-    
-    for pkg in wpad-basic wpad-basic-mbedtls wpad-mini; do
-        opkg remove "$pkg" 2>/dev/null || true
-    done
-    
-    if [ "$ROAMING" = "1" ]; then
-        echo "[*] Установка wpad-openssl для поддержки роуминга..."
-        opkg install wpad-openssl 2>/dev/null || opkg install wpad 2>/dev/null
-    fi
-fi
-
-echo "[✓] Пакеты готовы"
-
-# ====================== ПАРАМЕТРЫ ======================
+# ===== ОБЩИЕ НАСТРОЙКИ =====
+SSID="ChikaWiFi"
+PASSWORD="irdiS0066"
 COUNTRY="RU"
+MOBILITY_DOMAIN="abcd"
+RSSI_24="-73"
+RSSI_5="-70"
 
-if [ "$ROUTER_TYPE" = "R1" ]; then
-    RADIO0_CH=1
-    RADIO1_CH=36
-    NASID_24="${SSID}_24G_R1"
-    NASID_5="${SSID}_5G_R1"
-    MOBILITY_DOMAIN="a1b2"
-elif [ "$ROUTER_TYPE" = "R2" ]; then
-    RADIO0_CH=6
-    RADIO1_CH=40
-    NASID_24="${SSID}_24G_R2"
-    NASID_5="${SSID}_5G_R2"
-    MOBILITY_DOMAIN="a1b2"
+# ===== ПРОВЕРКА ИНТЕРНЕТА И ПАКЕТОВ =====
+echo "[*] Проверка пакетного менеджера..."
+if command -v apk >/dev/null 2>&1; then
+    PKG_MGR="apk"
+    UPDATE="apk update"
+    INSTALL="apk add"
+    REMOVE="apk del"
+elif command -v opkg >/dev/null 2>&1; then
+    PKG_MGR="opkg"
+    UPDATE="opkg update"
+    INSTALL="opkg install"
+    REMOVE="opkg remove"
 else
-    RADIO0_CH=$(uci get wireless.radio0.channel 2>/dev/null || echo "1")
-    RADIO1_CH=$(uci get wireless.radio1.channel 2>/dev/null || echo "36")
+    echo "[!] Пакетный менеджер не найден!"; exit 1
 fi
 
-# ====================== ОПРЕДЕЛЕНИЕ ИНТЕРФЕЙСОВ ======================
-echo "[*] Определение WiFi интерфейсов..."
-
-# АКТИВИРУЕМ ИНТЕРФЕЙСЫ (главное исправление!)
-echo "[*] Активация WiFi интерфейсов..."
-if uci get wireless.default_radio0 >/dev/null 2>&1; then
-    uci set wireless.default_radio0.disabled='0'
+echo "[*] Обновление wpad (необходимо для 802.11r)..."
+if ! ping -c 1 8.8.8.8 >/dev/null 2>&1; then
+    echo "[!] Нет интернета! Пропускаю установку пакетов."
+else
+    $UPDATE
+    # Устанавливаем полный wpad, затем удаляем огрызки
+    $INSTALL wpad-openssl && $REMOVE wpad-basic wpad-basic-mbedtls wpad-mini 2>/dev/null
 fi
 
-if uci get wireless.default_radio1 >/dev/null 2>&1; then
-    uci set wireless.default_radio1.disabled='0'
-fi
+# ===== ВЫБОР РЕЖИМА =====
+echo "Выберите режим устройства:"
+echo "1) R1 — основной роутер (DHCP ВКЛ)"
+echo "2) AP — точка доступа (DHCP ВЫКЛ)"
+read -r MODE
 
-# Теперь находим интерфейсы (уже активные)
-IFACE_24=""
-IFACE_5=""
+case "$MODE" in
+  1) DEVICE_MODE="R1"; CH24=1; CH5=36 ;;
+  2) 
+    DEVICE_MODE="AP"
+    echo "Выберите номер точки доступа (для разноса каналов):"
+    echo "1) AP1 (каналы 1 / 36)"
+    echo "2) AP2 (каналы 6 / 44)"
+    echo "3) AP3 (каналы 11 / 52)"
+    echo "4) AP4 (каналы 1 / 149)"
+    read -r AP_NUM
+    case "$AP_NUM" in
+      1) CH24=1;  CH5=36 ;;
+      2) CH24=6;  CH5=44 ;;
+      3) CH24=11; CH5=52 ;;
+      4) CH24=1;  CH5=149 ;;
+      *) echo "Ошибка"; exit 1 ;;
+    esac
+    ;;
+  *) echo "Ошибка"; exit 1 ;;
+esac
 
-# Пробуем стандартные имена
-if uci get wireless.default_radio0 >/dev/null 2>&1; then
-    IFACE_24="default_radio0"
-fi
+# ===== ПОИСК ИНТЕРФЕЙСОВ (Безопасный метод) =====
+# На Cudy интерфейсы могут называться не [0] и [1], поэтому ищем их по привязке к радио
+IFACE24=$(uci show wireless | grep "device='radio0'" | head -1 | cut -d. -f2 | cut -d= -f1)
+IFACE5=$(uci show wireless | grep "device='radio1'" | head -1 | cut -d. -f2 | cut -d= -f1)
 
-if uci get wireless.default_radio1 >/dev/null 2>&1; then
-    IFACE_5="default_radio1"
-fi
+# ===== ФУНКЦИЯ НАСТРОЙКИ =====
+set_wifi() {
+    local RADIO=$1
+    local IFACE=$2
+    local CH=$3
+    local NASID=$4
+    local RSSI=$5
 
-# Если стандартных нет - ищем как в оригинальном скрипте
-if [ -z "$IFACE_24" ]; then
-    IFACE_24=$(uci show wireless | grep "device='radio0'" | head -1 | cut -d. -f2 | cut -d= -f1)
-fi
+    echo "[*] Настройка $RADIO ($IFACE)..."
+    uci set wireless.${RADIO}.disabled='0'
+    uci set wireless.${RADIO}.country="$COUNTRY"
+    uci set wireless.${RADIO}.channel="$CH"
+    uci set wireless.${RADIO}.band='$(echo $RADIO | grep -q 0 && echo "2g" || echo "5g")'
 
-if [ -z "$IFACE_5" ]; then
-    IFACE_5=$(uci show wireless | grep "device='radio1'" | head -1 | cut -d. -f2 | cut -d= -f1)
-fi
+    uci set wireless.${IFACE}.ssid="$SSID"
+    uci set wireless.${IFACE}.encryption='psk2'
+    uci set wireless.${IFACE}.key="$PASSWORD"
+    uci set wireless.${IFACE}.disabled='0'  # Явно включаем интерфейс
 
-# Если всё ещё нет - создаём
-if [ -z "$IFACE_24" ]; then
-    echo "[!] Интерфейс для radio0 не найден! Создаю..."
-    uci add wireless wifi-iface >/dev/null
-    uci set wireless.@wifi-iface[-1].device='radio0'
-    uci set wireless.@wifi-iface[-1].mode='ap'
-    uci set wireless.@wifi-iface[-1].network='lan'
-    IFACE_24=$(uci show wireless | grep "device='radio0'" | head -1 | cut -d. -f2 | cut -d= -f1)
-fi
-
-if [ -z "$IFACE_5" ]; then
-    echo "[!] Интерфейс для radio1 не найден! Создаю..."
-    uci add wireless wifi-iface >/dev/null
-    uci set wireless.@wifi-iface[-1].device='radio1'
-    uci set wireless.@wifi-iface[-1].mode='ap'
-    uci set wireless.@wifi-iface[-1].network='lan'
-    IFACE_5=$(uci show wireless | grep "device='radio1'" | head -1 | cut -d. -f2 | cut -d= -f1)
-fi
-
-echo "[✓] Интерфейсы: $IFACE_24 (2.4GHz), $IFACE_5 (5GHz)"
-
-# ====================== НАСТРОЙКА WiFi ======================
-echo "[*] Настройка WiFi..."
-
-# Настройка 2.4GHz
-echo "[*] Настройка 2.4GHz..."
-uci set wireless.radio0.channel="$RADIO0_CH"
-uci set wireless.radio0.country="$COUNTRY"
-uci set wireless.radio0.disabled='0'
-
-uci set wireless.${IFACE_24}.ssid="$SSID"
-uci set wireless.${IFACE_24}.encryption='psk2'
-uci set wireless.${IFACE_24}.key="$PASSWORD"
-uci set wireless.${IFACE_24}.wmm='1'
-uci set wireless.${IFACE_24}.disabled='0'  # ЯВНО ВКЛЮЧАЕМ
-
-# Удаляем старые опции роуминга (очистка)
-for opt in ieee80211r mobility_domain ft_over_ds ft_psk_generate_local nasid ieee80211k rrm_neighbor_report ieee80211v bss_transition rssi_min disassoc_low_ack; do
-    uci -q delete wireless.${IFACE_24}.${opt} 2>/dev/null || true
-done
-
-# Роуминг для 2.4GHz
-if [ "$ROAMING" = "1" ]; then
-    echo "  [+] Добавление 802.11r/k/v..."
-    uci set wireless.${IFACE_24}.ieee80211r='1'
-    uci set wireless.${IFACE_24}.mobility_domain="$MOBILITY_DOMAIN"
-    uci set wireless.${IFACE_24}.ft_over_ds='1'
-    uci set wireless.${IFACE_24}.ft_psk_generate_local='1'
-    uci set wireless.${IFACE_24}.nasid="$NASID_24"
-    uci set wireless.${IFACE_24}.ieee80211k='1'
-    uci set wireless.${IFACE_24}.rrm_neighbor_report='1'
-    uci set wireless.${IFACE_24}.ieee80211v='1'
-    uci set wireless.${IFACE_24}.bss_transition='1'
-fi
-
-# Настройка 5GHz
-echo "[*] Настройка 5GHz..."
-uci set wireless.radio1.channel="$RADIO1_CH"
-uci set wireless.radio1.country="$COUNTRY"
-uci set wireless.radio1.disabled='0'
-
-uci set wireless.${IFACE_5}.ssid="$SSID"
-uci set wireless.${IFACE_5}.encryption='psk2'
-uci set wireless.${IFACE_5}.key="$PASSWORD"
-uci set wireless.${IFACE_5}.wmm='1'
-uci set wireless.${IFACE_5}.disabled='0'  # ЯВНО ВКЛЮЧАЕМ
-
-# Удаляем старые опции роуминга (очистка)
-for opt in ieee80211r mobility_domain ft_over_ds ft_psk_generate_local nasid ieee80211k rrm_neighbor_report ieee80211v bss_transition rssi_min disassoc_low_ack; do
-    uci -q delete wireless.${IFACE_5}.${opt} 2>/dev/null || true
-done
-
-# Роуминг для 5GHz
-if [ "$ROAMING" = "1" ]; then
-    echo "  [+] Добавление 802.11r/k/v..."
-    uci set wireless.${IFACE_5}.ieee80211r='1'
-    uci set wireless.${IFACE_5}.mobility_domain="$MOBILITY_DOMAIN"
-    uci set wireless.${IFACE_5}.ft_over_ds='1'
-    uci set wireless.${IFACE_5}.ft_psk_generate_local='1'
-    uci set wireless.${IFACE_5}.nasid="$NASID_5"
-    uci set wireless.${IFACE_5}.ieee80211k='1'
-    uci set wireless.${IFACE_5}.rrm_neighbor_report='1'
-    uci set wireless.${IFACE_5}.ieee80211v='1'
-    uci set wireless.${IFACE_5}.bss_transition='1'
-fi
-
-# Сохраняем WiFi
-uci commit wireless
-
-# ====================== СЕТЕВЫЕ НАСТРОЙКИ ======================
-echo "[*] Настройка сети..."
-
-if [ "$ROUTER_TYPE" = "R2" ]; then
-    # Точка доступа
-    AP_IP=${AP_IP:-192.168.1.2}
-    read -r -p "IP для этой точки доступа [$AP_IP]: " input_ip
-    AP_IP=${input_ip:-$AP_IP}
+    # Роуминг
+    uci set wireless.${IFACE}.ieee80211r='1'
+    uci set wireless.${IFACE}.mobility_domain="$MOBILITY_DOMAIN"
+    uci set wireless.${IFACE}.ft_over_ds='1'
+    uci set wireless.${IFACE}.ft_psk_generate_local='1'
+    uci set wireless.${IFACE}.nasid="${NASID}_${DEVICE_MODE}"
+    uci set wireless.${IFACE}.ieee80211k='1'
+    uci set wireless.${IFACE}.ieee80211v='1'
+    uci set wireless.${IFACE}.bss_transition='1'
     
-    uci set network.lan.ipaddr="$AP_IP"
-    uci set network.lan.netmask='255.255.255.0'
-    uci set network.lan.gateway="$R1_IP"
-    uci set network.lan.dns="$R1_IP"
+    # Агрессивный кик при плохом сигнале
+    uci set wireless.${IFACE}.rssi_min="$RSSI"
+    uci set wireless.${IFACE}.disassoc_low_ack='1'
+}
+
+# Применяем
+set_wifi "radio0" "$IFACE24" "$CH24" "Chika24" "$RSSI_24"
+set_wifi "radio1" "$IFACE5" "$CH5" "Chika5" "$RSSI_5"
+
+# ===== DHCP И СЕТЬ ДЛЯ AP =====
+if [ "$DEVICE_MODE" = "AP" ]; then
+    echo "[*] Настройка сетевого моста для AP..."
     uci set dhcp.lan.ignore='1'
-    uci commit network
     uci commit dhcp
     
-    /etc/init.d/dnsmasq disable 2>/dev/null || true
-    /etc/init.d/dnsmasq stop 2>/dev/null || true
-    
-    echo "[✓] Точка доступа (IP: $AP_IP, шлюз: $R1_IP)"
+    # В режиме AP лучше сразу предложить сменить IP, чтобы не было конфликта с R1
+    echo "Введите IP для этой точки доступа (например 192.168.1.2):"
+    read -r NEW_IP
+    if [ -n "$NEW_IP" ]; then
+        uci set network.lan.ipaddr="$NEW_IP"
+        uci commit network
+    fi
 fi
 
-# ====================== ПРИМЕНЕНИЕ ======================
-echo "[*] Применение настроек..."
+uci commit wireless
+echo "[*] Перезагрузка WiFi..."
 wifi reload
 
-sleep 3
-
-# ====================== РЕЗУЛЬТАТ ======================
-echo ""
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║            НАСТРОЙКА ЗАВЕРШЕНА УСПЕШНО                   ║"
-echo "╠══════════════════════════════════════════════════════════╣"
-echo "║ Режим:           $ROUTER_TYPE                                       ║"
-echo "║ SSID:            $SSID                                ║"
-echo "║ Шифрование:      WPA2-PSK                              ║"
-echo "║ Пароль:          $PASSWORD                        ║"
-echo "╠══════════════════════════════════════════════════════════╣"
-
-if [ "$ROAMING" = "1" ]; then
-    echo "║ РОУМИНГ ВКЛЮЧЕН:                                      ║"
-    echo "║  ✓ 802.11r (Fast BSS Transition)                       ║"
-    echo "║  ✓ 802.11k (Neighbor Reports)                          ║"
-    echo "║  ✓ 802.11v (BSS Transition)                            ║"
-    echo "║  Mobility Domain: $MOBILITY_DOMAIN                                    ║"
-    echo "╠══════════════════════════════════════════════════════════╣"
-    echo "║ 2.4GHz NASID: $NASID_24              ║"
-    echo "║ 5GHz NASID:   $NASID_5               ║"
-else
-    echo "║ Режим:           Стандартный WiFi                       ║"
-fi
-
-echo "╠══════════════════════════════════════════════════════════╣"
-echo "║ 2.4GHz канал: $RADIO0_CH                                      ║"
-echo "║ 5GHz канал:   $RADIO1_CH                                     ║"
-echo "╚══════════════════════════════════════════════════════════╝"
-echo ""
-
-# Проверка статуса
-echo "[*] Статус WiFi:"
-iwinfo 2>/dev/null | grep -E "ESSID|Channel" || echo "  Выполните: iwinfo"
-
-echo ""
-if [ "$ROUTER_TYPE" = "R2" ]; then
-    echo "[!] ВАЖНО: Подключите точку доступа к R1 через LAN порт"
-    echo "    Точка доступа: $AP_IP"
-    echo "    Основной роутер: $R1_IP"
-elif [ "$ROUTER_TYPE" = "R1" ]; then
-    echo "[*] Для добавления точки доступа R2:"
-    echo "    1. Подключите R2 к этому роутеру через LAN"
-    echo "    2. Запустите скрипт на R2 и выберите режим 3"
-    echo "    3. Используйте тот же SSID и пароль"
-fi
-echo ""
-echo "[✓] Готово!"
+echo "================================="
+echo "Успешно настроено как $DEVICE_MODE"
+echo "SSID: $SSID"
+echo "================================="
