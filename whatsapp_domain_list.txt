@@ -1,0 +1,168 @@
+# ==========================================
+# WhatsApp Custom Domain List for Podkop
+# ==========================================
+
+# Основные домены
+whatsapp.com
+whatsapp.net
+whatsapp.biz
+wa.me
+
+# WhatsApp Web (все версии)
+web.whatsapp.com
+dyn.web.whatsapp.com
+w0.web.whatsapp.com
+w1.web.whatsapp.com
+w2.web.whatsapp.com
+w3.web.whatsapp.com
+w4.web.whatsapp.com
+w5.web.whatsapp.com
+w6.web.whatsapp.com
+w7.web.whatsapp.com
+w8.web.whatsapp.com
+w9.web.whatsapp.com
+web-t.whatsapp.com
+w1.web-t.whatsapp.com
+w2.web-t.whatsapp.com
+w3.web-t.whatsapp.com
+w4.web-t.whatsapp.com
+up.web.whatsapp.com
+
+# API и бизнес
+api.whatsapp.com
+graph.whatsapp.com
+business.whatsapp.com
+chat.whatsapp.com
+call.whatsapp.com
+account.whatsapp.com
+payments.whatsapp.com
+payments-localisation.whatsapp.com
+
+# Резервные API
+api-fallback.whatsapp.com
+chat-fallback.whatsapp.com
+call-fallback.whatsapp.com
+account-fallback.whatsapp.com
+
+# Регистрация
+v.whatsapp.com
+auth.whatsapp.com
+registration.whatsapp.com
+
+# CDN и статика
+cdn.whatsapp.net
+scontent.whatsapp.net
+static.whatsapp.net
+pps.whatsapp.net
+media.whatsapp.com
+media.whatsapp.net
+
+# Медиа и звонки
+mmg.whatsapp.com
+mmi.whatsapp.net
+mms.whatsapp.net
+mme.whatsapp.net
+
+# Основные CDN серверы
+media-ams4-1.cdn.whatsapp.net
+media-ber1-1.cdn.whatsapp.net
+media-bom1-1.cdn.whatsapp.net
+media-cdg.cdn.whatsapp.net
+media-del1-1.cdn.whatsapp.net
+media-del3-2.cdn.whatsapp.net
+media-dfw5-2.cdn.whatsapp.net
+media-fra3-2.cdn.whatsapp.net
+media-gru2-2.cdn.whatsapp.net
+media-hkg4-2.cdn.whatsapp.net
+media-lax3-1.cdn.whatsapp.net
+media-lcy1-1.cdn.whatsapp.net
+media-lhr8-1.cdn.whatsapp.net
+media-lis1-1.cdn.whatsapp.net
+media-mad1-1.cdn.whatsapp.net
+media-mia3-1.cdn.whatsapp.net
+media-mnl1-2.cdn.whatsapp.net
+media-mrs2-1.cdn.whatsapp.net
+media-muc2-1.cdn.whatsapp.net
+media-nrt1-1.cdn.whatsapp.net
+media-ord5-2.cdn.whatsapp.net
+media-ort2-2.cdn.whatsapp.net
+media-sea1-1.cdn.whatsapp.net
+media-sin2-2.cdn.whatsapp.net
+media-sjc1-1.cdn.whatsapp.net
+media-tpe1-1.cdn.whatsapp.net
+media-waw2-1.cdn.whatsapp.net
+media-yyz1-1.cdn.whatsapp.net
+media-zrh1-1.cdn.whatsapp.net
+
+# Fallback серверы
+web-fallback.whatsapp.com
+www-fallback.whatsapp.com
+test-web-fallback.whatsapp.com
+dev-web-fallback.whatsapp.com
+
+# Facebook API (необходимы для WhatsApp)
+graph.facebook.com
+graph.facebook.net
+b-graph.facebook.com
+graph-video.facebook.com
+video.xx.fbcdn.net
+
+# Facebook CDN
+scontent-hel3-1.xx.fbcdn.net
+scontent-arn2-1.xx.fbcdn.net
+scontent-fra3-1.xx.fbcdn.net
+scontent-lhr8-1.xx.fbcdn.net
+scontent-mia3-1.xx.fbcdn.net
+scontent-ord5-1.xx.fbcdn.net
+scontent-sin6-1.xx.fbcdn.net
+scontent-waw2-1.xx.fbcdn.net
+
+# Meta/Facebook основные
+facebook.com
+facebook.net
+fbcdn.net
+fb.me
+fb.com
+fbsbx.com
+meta.com
+oculus.com
+
+# DNS и балансировка
+b.ns.whatsapp.net
+c.ns.whatsapp.net
+ns.whatsapp.net
+
+# Дополнительные WhatsApp серверы
+acs.whatsapp.com
+acs-fallback.whatsapp.com
+ftl.whatsapp.com
+ftl-fallback.whatsapp.com
+sonar.whatsapp.net
+snr.whatsapp.net
+
+# Статические и системные
+static-fallback.whatsapp.net
+crashlogs.whatsapp.net
+autodiscover.whatsapp.com
+external.whatsapp.net
+
+# WhatsApp Web дополнительные
+alpha.whatsapp.com
+beta.whatsapp.com
+gamma.whatsapp.com
+dev-web.whatsapp.com
+dev-web-beta.whatsapp.com
+test-web.whatsapp.com
+
+# Мобильная версия
+m.whatsapp.com
+m.facebook.com
+
+# WA.ME (короткие ссылки)
+www.wa.me
+my-od.wa.me
+my-od-1.wa.me
+my-od-2.wa.me
+my-od-3.wa.me
+my-od-4.wa.me
+my-od-5.wa.me
